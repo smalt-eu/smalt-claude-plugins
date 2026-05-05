@@ -11,22 +11,12 @@ precedence:
 
   1. Process environment variable METABASE_API_KEY (works when the MCP
      host propagates env, e.g. Claude Code CLI).
-  2. ~/.config/smalt/metabase.key — a sidecar file the user creates
-     once. This is the recommended path on Cowork desktop, where
+  2. ~/.config/smalt/metabase.key — paste the API key on its own line.
+     The whole file content is treated as the key (whitespace stripped).
+     This is the recommended path on Cowork desktop, where
      userConfig / env-block substitution is currently broken (see
-     Anthropic issues #39125 / #39455 / #39827).
-
-The credentials file accepts either env-file syntax:
-
-    METABASE_API_KEY=mb_...
-
-…or a bare API key with no prefix (just paste the key into the file):
-
-    mb_...
-
-Comment lines starting with `#` and blank lines are ignored. Surrounding
-single or double quotes around values are stripped. The file should be
-chmod 600.
+     Anthropic issues #39125 / #39455 / #39827). The file should be
+     chmod 600.
 """
 from __future__ import annotations
 import json
@@ -55,69 +45,49 @@ def _send(message: dict) -> None:
     sys.stdout.flush()
 
 
-def _strip_quotes(v: str) -> str:
-    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
-        return v[1:-1]
-    return v
+def _read_key_file(path: str) -> tuple[str | None, str | None]:
+    """Read the API key from the sidecar file.
 
+    The whole file content is treated as the key, with leading/trailing
+    whitespace stripped. No parsing, no env-style syntax, no comments —
+    just the key.
 
-def _parse_env_file(path: str) -> dict:
-    """Parse credentials from a sidecar file.
-
-    Accepts two formats, mixable in one file:
-      - Standard `KEY=VALUE` lines (env-file style).
-      - Bare lines (no `=`): treated as METABASE_API_KEY. Lets the user
-        just paste the API key into the file with no prefix.
-
-    If both a bare line and an explicit METABASE_API_KEY= line are present,
-    the explicit assignment wins. Comments (`#`) and blank lines ignored.
-    Returns {} if the file is missing or unreadable.
+    Returns (key_or_None, diagnostic_or_None).
     """
-    out: dict[str, str] = {}
-    naked: list[str] = []
     try:
         with open(path, encoding="utf-8") as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" not in line:
-                    naked.append(_strip_quotes(line))
-                    continue
-                k, v = line.split("=", 1)
-                k = k.strip()
-                v = _strip_quotes(v.strip())
-                if k:
-                    out[k] = v
+            content = f.read().strip()
     except FileNotFoundError:
-        pass
+        return None, f"file does not exist (HOME={os.environ.get('HOME', '?')})"
+    except PermissionError as e:
+        return None, (
+            f"file exists but the MCP server can't read it "
+            f"(PermissionError: {e}). Check macOS Privacy & Security → "
+            f"Files and Folders for Cowork."
+        )
     except OSError as e:
-        _log(f"could not read {path}: {e}")
-    # If we got bare line(s) and no explicit METABASE_API_KEY, use the first
-    if naked and not out.get("METABASE_API_KEY"):
-        out["METABASE_API_KEY"] = naked[0]
-    return out
+        return None, f"OS error reading file: {type(e).__name__}: {e}"
+    except UnicodeDecodeError as e:
+        return None, f"file is not UTF-8 ({e}). Re-create with a plain text editor."
+    return (content or None), None
 
 
-def _read_key() -> str | None:
-    """Resolve api_key from process env or sidecar file. None if missing."""
+def _read_key() -> tuple[str | None, str | None]:
+    """Resolve api_key. Returns (key_or_None, file_diagnostic_or_None)."""
     key = os.environ.get("METABASE_API_KEY", "")
-    if not key:
-        sidecar = _parse_env_file(CREDENTIALS_FILE)
-        key = sidecar.get("METABASE_API_KEY", "")
-    return key or None
+    if key:
+        return key, None
+    return _read_key_file(CREDENTIALS_FILE)
 
 
 def metabase_request(method: str, endpoint: str, body) -> str:
-    key = _read_key()
+    key, diag = _read_key()
     if not key:
+        diag_line = f"\nCredentials file diagnostic: {diag}" if diag else ""
         return (
-            f"missing METABASE_API_KEY. Create {CREDENTIALS_FILE} with either:\n"
-            f"    mb_your_key_here\n"
-            f"or:\n"
-            f"    METABASE_API_KEY=mb_your_key_here\n"
-            f"chmod 600 the file and fully relaunch your Claude client. "
-            f"Or export METABASE_API_KEY in your shell (Claude Code CLI only)."
+            f"missing METABASE_API_KEY. Paste your Metabase API key on its "
+            f"own line into {CREDENTIALS_FILE}, chmod 600 the file, and "
+            f"fully relaunch your Claude client.{diag_line}"
         )
 
     if not endpoint.startswith("/"):

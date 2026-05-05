@@ -25,11 +25,11 @@ body. The full response body is returned as a string.
 
 ## Setup
 
-The MCP server reads credentials from `~/.config/smalt/metabase.env` (a
-two-line key=value file with `METABASE_BASE_URL` and `METABASE_API_KEY`).
-See the plugin README for one-off setup. Process env vars of the same
-names also work and take precedence — handy for overriding the base URL
-in a different environment.
+The MCP server reads the API key from `~/.config/smalt/metabase.key` —
+either a bare key on its own line, or `METABASE_API_KEY=mb_...` env-file
+syntax. It always talks to `https://metabase.smalt.eu`. See the plugin
+README for one-off setup. The `METABASE_API_KEY` process env var also
+works and takes precedence over the file.
 
 Quick auth sanity check:
 

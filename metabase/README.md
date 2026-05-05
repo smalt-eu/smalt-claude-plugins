@@ -36,26 +36,19 @@ Open Terminal and run:
 ```bash
 mkdir -p ~/.config/smalt
 chmod 700 ~/.config/smalt
-nano ~/.config/smalt/metabase.env
+nano ~/.config/smalt/metabase.key
 ```
 
-In the editor, paste these two lines (replace the key with your own):
+In the editor, paste your Metabase API key on its own line:
 
 ```
-METABASE_BASE_URL=https://metabase.smalt.eu
-METABASE_API_KEY=mb_your_key_here
+mb_your_key_here
 ```
 
 Save with `Ctrl+O`, `Enter`, then exit with `Ctrl+X`. Lock the file down:
 
 ```bash
-chmod 600 ~/.config/smalt/metabase.env
-```
-
-To verify:
-
-```bash
-ls -la ~/.config/smalt/metabase.env   # should show -rw-------
+chmod 600 ~/.config/smalt/metabase.key
 ```
 
 ### 2. Install the plugin
@@ -76,26 +69,14 @@ claude plugin install metabase@smalt-eu/smalt-claude-plugins
 
 Open a fresh Cowork conversation and ask Claude:
 
-> Use the metabase skill to call `GET /user/current` and tell me which
-> Metabase user the API key is bound to.
+> Use the metabase skill to and tell me which Metabase user the API key is bound to.
 
 You should get a small JSON blob with your user's email and group
-memberships. If you see `missing METABASE_BASE_URL and METABASE_API_KEY
-...`, the sidecar file isn't being found at `~/.config/smalt/metabase.env`
+memberships. If you see `missing METABASE_API_KEY
+...`, the sidecar file isn't being found at `~/.config/smalt/metabase.key`
 — check the file path and permissions. If you see `network error: ...`,
 the file is read but the request can't reach Metabase — typically a VPN,
 DNS, or firewall thing on your end.
-
-### Alternative: process environment variables
-
-If you'd rather not put the key in a file (e.g., on a shared machine
-where you set creds via a secrets manager), the server also reads
-`METABASE_BASE_URL` and `METABASE_API_KEY` from its process environment.
-Process env takes precedence over the sidecar file on a per-variable
-basis — useful for overriding `METABASE_BASE_URL` while keeping the key
-in the file, etc. Note that Cowork (currently) does not propagate user
-shell env to MCP server processes; this path mainly helps Claude Code
-CLI users.
 
 ## What's in the box
 
@@ -118,11 +99,8 @@ for HTTP).
 
 ## Security notes
 
-- `~/.config/smalt/metabase.env` stores the API key in plain text. `chmod
+- `~/.config/smalt/metabase.key` stores the API key in plain text. `chmod
   600` keeps other users on your machine out, but anyone with shell
   access as you can read it. For higher-security setups, switch to the
   process-env path and inject the key from a secrets manager (1Password
   CLI, vault, etc.).
-- The sidecar file location is fixed to `~/.config/smalt/metabase.env`.
-  If you want it elsewhere, edit the `CREDENTIALS_FILE` constant near
-  the top of `servers/metabase.py` and reinstall.

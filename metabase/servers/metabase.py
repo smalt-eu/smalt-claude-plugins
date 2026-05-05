@@ -5,25 +5,30 @@ Implements the Model Context Protocol (JSON-RPC 2.0 over stdio) using
 nothing but the Python standard library. Exposes a single generic `query`
 tool that proxies HTTP calls to the configured Metabase instance.
 
-Credentials are read in this order:
-  1. Process environment variables METABASE_BASE_URL / METABASE_API_KEY
-     (works when the MCP host propagates env, e.g. Claude Code CLI).
-  2. ~/.config/smalt/metabase.env — a key=value file the user creates once.
-     This is the recommended path on Cowork desktop, where userConfig /
-     env-block substitution is currently broken (see Anthropic
-     issues #39125 / #39455 / #39827).
+The server always talks to https://metabase.smalt.eu (smalt's production
+instance). Only the API key is configurable per-user, in order of
+precedence:
 
-The credentials file format is:
+  1. Process environment variable METABASE_API_KEY (works when the MCP
+     host propagates env, e.g. Claude Code CLI).
+  2. ~/.config/smalt/metabase.key — a sidecar file the user creates
+     once. This is the recommended path on Cowork desktop, where
+     userConfig / env-block substitution is currently broken (see
+     Anthropic issues #39125 / #39455 / #39827).
 
-    METABASE_BASE_URL=https://metabase.smalt.eu
+The credentials file accepts either env-file syntax:
+
     METABASE_API_KEY=mb_...
+
+…or a bare API key with no prefix (just paste the key into the file):
+
+    mb_...
 
 Comment lines starting with `#` and blank lines are ignored. Surrounding
 single or double quotes around values are stripped. The file should be
 chmod 600.
 """
 from __future__ import annotations
-
 import json
 import os
 import sys
@@ -35,7 +40,8 @@ SERVER_NAME = "metabase"
 SERVER_VERSION = "0.3.0"
 HTTP_TIMEOUT_SECONDS = 60
 
-CREDENTIALS_FILE = os.path.expanduser("~/.config/smalt/metabase.env")
+CREDENTIALS_FILE = os.path.expanduser("~/.config/smalt/metabase.key")
+DEFAULT_BASE_URL = "https://metabase.smalt.eu"
 
 
 def _log(msg: str) -> None:
@@ -49,70 +55,74 @@ def _send(message: dict) -> None:
     sys.stdout.flush()
 
 
+def _strip_quotes(v: str) -> str:
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        return v[1:-1]
+    return v
+
+
 def _parse_env_file(path: str) -> dict:
-    """Parse a simple KEY=VALUE file. Returns {} if file missing or unreadable."""
+    """Parse credentials from a sidecar file.
+
+    Accepts two formats, mixable in one file:
+      - Standard `KEY=VALUE` lines (env-file style).
+      - Bare lines (no `=`): treated as METABASE_API_KEY. Lets the user
+        just paste the API key into the file with no prefix.
+
+    If both a bare line and an explicit METABASE_API_KEY= line are present,
+    the explicit assignment wins. Comments (`#`) and blank lines ignored.
+    Returns {} if the file is missing or unreadable.
+    """
     out: dict[str, str] = {}
+    naked: list[str] = []
     try:
         with open(path, encoding="utf-8") as f:
             for raw in f:
                 line = raw.strip()
-                if not line or line.startswith("#") or "=" not in line:
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    naked.append(_strip_quotes(line))
                     continue
                 k, v = line.split("=", 1)
                 k = k.strip()
-                v = v.strip()
-                # Strip a single matching pair of surrounding quotes
-                if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
-                    v = v[1:-1]
+                v = _strip_quotes(v.strip())
                 if k:
                     out[k] = v
     except FileNotFoundError:
         pass
     except OSError as e:
         _log(f"could not read {path}: {e}")
+    # If we got bare line(s) and no explicit METABASE_API_KEY, use the first
+    if naked and not out.get("METABASE_API_KEY"):
+        out["METABASE_API_KEY"] = naked[0]
     return out
 
 
-def _read_env() -> tuple[str, str] | tuple[None, str]:
-    """Resolve (base_url, api_key) from process env or sidecar file."""
-    base = os.environ.get("METABASE_BASE_URL", "").strip()
+def _read_key() -> str | None:
+    """Resolve api_key from process env or sidecar file. None if missing."""
     key = os.environ.get("METABASE_API_KEY", "")
-
-    if not base or not key:
-        sidecar = _parse_env_file(CREDENTIALS_FILE)
-        if not base:
-            base = sidecar.get("METABASE_BASE_URL", "").strip()
-        if not key:
-            key = sidecar.get("METABASE_API_KEY", "")
-
-    base = base.rstrip("/")
-
-    missing = []
-    if not base:
-        missing.append("METABASE_BASE_URL")
     if not key:
-        missing.append("METABASE_API_KEY")
-    if missing:
-        return None, (
-            f"missing {' and '.join(missing)}. "
-            f"Either export them in your shell, or create {CREDENTIALS_FILE} "
-            f"with lines like:\n"
-            f"    METABASE_BASE_URL=https://metabase.smalt.eu\n"
-            f"    METABASE_API_KEY=mb_...\n"
-            f"Then chmod 600 the file and fully relaunch your Claude client."
-        )
-    return (base, key)
+        sidecar = _parse_env_file(CREDENTIALS_FILE)
+        key = sidecar.get("METABASE_API_KEY", "")
+    return key or None
 
 
 def metabase_request(method: str, endpoint: str, body) -> str:
-    env = _read_env()
-    if env[0] is None:
-        return f"error: {env[1]}"
-    base, key = env
+    key = _read_key()
+    if not key:
+        return (
+            f"missing METABASE_API_KEY. Create {CREDENTIALS_FILE} with either:\n"
+            f"    mb_your_key_here\n"
+            f"or:\n"
+            f"    METABASE_API_KEY=mb_your_key_here\n"
+            f"chmod 600 the file and fully relaunch your Claude client. "
+            f"Or export METABASE_API_KEY in your shell (Claude Code CLI only)."
+        )
 
     if not endpoint.startswith("/"):
         endpoint = "/" + endpoint
-    url = f"{base}/api{endpoint}"
+    url = f"{DEFAULT_BASE_URL}/api{endpoint}"
 
     data = None
     if body is not None and body != "":
@@ -121,24 +131,17 @@ def metabase_request(method: str, endpoint: str, body) -> str:
         else:
             data = json.dumps(body).encode("utf-8")
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=data,
-            method=method.upper(),
-            headers={
-                "x-api-key": key,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-        )
-    except ValueError as e:
-        return (
-            f"error: invalid URL '{url}' ({e}). "
-            f"This usually means METABASE_BASE_URL was not substituted by the "
-            f"host — check that your Cowork/Claude Code config actually sets "
-            f"METABASE_BASE_URL where ${{...}} substitution can find it."
-        )
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method.upper(),
+        headers={
+            "x-api-key": key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
             return resp.read().decode("utf-8", errors="replace")

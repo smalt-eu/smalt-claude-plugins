@@ -29,25 +29,62 @@ Works in both Cowork and Claude Code.
 
 ## Setup
 
-Create `~/.config/smalt/metabase.env` with two lines:
+### 1. Create your credentials file
+
+Open Terminal and run:
+
+```bash
+mkdir -p ~/.config/smalt
+chmod 700 ~/.config/smalt
+nano ~/.config/smalt/metabase.env
+```
+
+In the editor, paste these two lines (replace the key with your own):
 
 ```
 METABASE_BASE_URL=https://metabase.smalt.eu
 METABASE_API_KEY=mb_your_key_here
 ```
 
-Lock it down:
+Save with `Ctrl+O`, `Enter`, then exit with `Ctrl+X`. Lock the file down:
 
 ```bash
-mkdir -p ~/.config/smalt
-chmod 700 ~/.config/smalt
 chmod 600 ~/.config/smalt/metabase.env
 ```
 
-That's it. No Cowork settings.json edits, no `launchctl`, no `userConfig`
-prompt. Drop the `.plugin` file into Cowork (or
-`claude plugin install …` for the CLI) and the server picks up the file
-on next spawn.
+To verify:
+
+```bash
+ls -la ~/.config/smalt/metabase.env   # should show -rw-------
+```
+
+### 2. Install the plugin
+
+**Cowork (recommended path).** Open Cowork → click the plugin browser /
+marketplaces icon → find the smalt marketplace → install `metabase`.
+After installing, fully quit Cowork (`Cmd+Q`) and relaunch so the MCP
+server is spawned with the new install.
+
+**Claude Code CLI.** From a terminal:
+
+```bash
+claude plugin marketplace add smalt-eu/smalt-claude-plugins
+claude plugin install metabase@smalt-eu/smalt-claude-plugins
+```
+
+### 3. Sanity-check
+
+Open a fresh Cowork conversation and ask Claude:
+
+> Use the metabase skill to call `GET /user/current` and tell me which
+> Metabase user the API key is bound to.
+
+You should get a small JSON blob with your user's email and group
+memberships. If you see `missing METABASE_BASE_URL and METABASE_API_KEY
+...`, the sidecar file isn't being found at `~/.config/smalt/metabase.env`
+— check the file path and permissions. If you see `network error: ...`,
+the file is read but the request can't reach Metabase — typically a VPN,
+DNS, or firewall thing on your end.
 
 ### Alternative: process environment variables
 
@@ -60,32 +97,10 @@ in the file, etc. Note that Cowork (currently) does not propagate user
 shell env to MCP server processes; this path mainly helps Claude Code
 CLI users.
 
-## Install
-
-Drop the `.plugin` file into a Cowork conversation. Cowork will show a
-preview and ask you to accept. (Or `claude plugin install
-/path/to/metabase.plugin` from a terminal.)
-
-## Sanity check
-
-Once installed and the file is in place, ask Claude:
-
-> Use the metabase skill to call `GET /user/current` and tell me which
-> Metabase user the API key is bound to.
-
-If everything is connected you'll get a small JSON blob with the user's
-email and group memberships.
-
-If you see `missing METABASE_BASE_URL and METABASE_API_KEY ...`, the
-sidecar file isn't being found at `~/.config/smalt/metabase.env`. Check
-file permissions and path. If you see `network error: ...`, the file is
-read but the request can't reach Metabase — typically a VPN, DNS, or
-firewall thing on your end.
-
 ## What's in the box
 
 ```
-metabase-plugin/
+metabase/
 ├── .claude-plugin/
 │   └── plugin.json     # plugin manifest
 ├── .mcp.json           # MCP server declaration (no env block — server reads its own)

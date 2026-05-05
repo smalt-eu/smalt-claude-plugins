@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "metabase": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/metabase.py"]
+    }
+  }
+}

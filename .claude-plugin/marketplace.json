@@ -1,0 +1,20 @@
+{
+  "name": "smalt-plugins",
+  "owner": {
+    "name": "Johannes Degn",
+    "email": "johannes@smalt.eu"
+  },
+  "metadata": {
+    "description": "Internal Claude plugins for smalt",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "metabase",
+      "source": "./metabase",
+      "description": "Query and manage smalt's Metabase instance via its REST API.",
+      "version": "0.3.0",
+      "keywords": ["metabase", "analytics", "dashboards", "sql"]
+    }
+  ]
+}

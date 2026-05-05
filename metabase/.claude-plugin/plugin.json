@@ -1,0 +1,9 @@
+{
+  "name": "metabase",
+  "version": "0.3.0",
+  "description": "Query and manage a Metabase instance via its REST API. Reads credentials from ~/.config/smalt/metabase.env",
+  "author": {
+    "name": "smalt"
+  },
+  "keywords": ["metabase", "analytics", "dashboards", "sql"]
+}

@@ -1,6 +1,6 @@
 {
   "name": "metabase",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Query and manage a Metabase instance via its REST API. Reads the API key from ~/.config/smalt/metabase.key",
   "author": {
     "name": "smalt"

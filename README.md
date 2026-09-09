@@ -9,7 +9,7 @@ Code from one centrally-managed source.
 | Plugin | What it does |
 |--------|--------------|
 | [`metabase`](./metabase) | Query and manage smalt's Metabase via its REST API. Reads credentials from `~/.config/smalt/metabase.key`. |
-| [`platform`](./platform) | Download a smalt project's documents — quotes, grid-registration forms, installer photos and schematics — so Claude can read them. Reads a refresh token from `~/.config/smalt/platform.token`. Use together with `metabase`, which finds the documents. |
+| [`smalt-documents`](./smalt-documents) | Download a smalt project's documents — quotes, grid-registration forms, installer photos and schematics — so Claude can read them. Reads a refresh token from `~/.config/smalt/platform.token`. Use together with `metabase`, which finds the documents. |
 
 ## Install a plugin (smalt employees)
 
@@ -18,8 +18,10 @@ plugin:
 
 1. Open Cowork → plugin browser / marketplaces.
 2. Find the `smalt` marketplace and pick the plugin you want.
-3. Follow the per-plugin README's setup section (most plugins want a
-   small one-off credentials file).
+3. Set up your credentials: from a clone of this repo, double-click
+   [`setup/Smalt Setup.command`](./setup). One dialog per password, no
+   Terminal — see [`setup/README.md`](./setup/README.md). Each plugin's own
+   README documents the manual route if you would rather do it by hand.
 4. Fully quit Cowork (`Cmd+Q`) and relaunch.
 
 For Claude Code CLI users:
@@ -28,6 +30,14 @@ For Claude Code CLI users:
 claude plugin marketplace add smalt-eu/smalt-claude-plugins
 claude plugin install <plugin-name>@smalt-eu/smalt-claude-plugins
 ```
+
+## Setting up a machine
+
+[`setup/`](./setup) holds a double-click launcher that installs the
+credentials the plugins in this repo need — the Metabase API key from
+Bitwarden, and a smalt platform login — into `~/.config/smalt/` at mode 600.
+Install the plugins first, then run it. It contains no secrets and prints
+none.
 
 ## Add a new plugin (contributors)
 

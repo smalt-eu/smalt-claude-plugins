@@ -8,8 +8,12 @@ schematics. Ships:
   `fetch_document` tool: it downloads one document to a local file and
   returns the path, so Claude's `Read` can render the image or PDF.
 - A **skill** (`skills/smalt-documents/SKILL.md`) that teaches Claude when to use
-  it, how to find documents in the first place, and the rules for handling
-  their contents.
+  it, how to find documents in the first place, the rules for handling
+  their contents, and how to walk someone through logging in.
+- A **login helper** (`scripts/platform-login.py`) that exchanges a smalt
+  login for the refresh token the server needs. It ships inside the plugin
+  deliberately: a Cowork user receives the plugin but not a checkout of this
+  repo, so a helper that lived only in `setup/` would be unreachable for them.
 
 ## What it deliberately does not do
 
@@ -75,18 +79,27 @@ refreshed — and worse, the installer would offer to overwrite your live
 token with the dead one. The workstation launcher asks for your Smalt email
 and password once instead, and exchanges them for a token.
 
-**Double-click `Smalt Setup.command`** in this repo's `setup/` folder. It
-asks for your smalt email and password once, exchanges them for a refresh
-token, and writes it to `~/.config/smalt/platform.token` at mode 600. The
-password is never stored.
-
-To do the same from a terminal:
+**From a terminal — works whatever you installed, and needs nothing else:**
 
 ```bash
-cd setup
-SMALT_PASSWORD='…' python3 platform-login.py --email you@smalt.eu
-python3 platform-login.py --check      # is a token installed? (no network)
+python3 scripts/platform-login.py --email you@smalt.eu   # prompts, hidden
+python3 scripts/platform-login.py --check                # installed? no network
 ```
+
+It asks for your password at a hidden prompt, POSTs it once, keeps only the
+refresh token, and writes it to `~/.config/smalt/platform.token` at mode 600.
+The password never reaches disk, shell history or `ps`. Output is a status, a
+path and a byte count — it never prints the token, so it is safe to run with
+Claude watching.
+
+If you installed through Cowork you have the plugin but not this repo; the
+script is still there, and `fetch_document`'s error message prints its
+absolute path. Ask Claude and it will find it for you.
+
+**Or double-click `setup/Smalt Setup.command`** if you have a checkout. It
+covers both credentials this repo needs, and since it asks which you want,
+choosing **Smalt login only** skips Bitwarden entirely — you do not need the
+`bw` CLI or a vault password just to read project documents.
 
 Or, if you already have a token from elsewhere, paste it on its own line:
 

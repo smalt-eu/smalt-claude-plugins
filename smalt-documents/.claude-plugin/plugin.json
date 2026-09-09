@@ -1,9 +1,14 @@
 {
   "name": "smalt-documents",
-  "version": "0.2.0",
-  "description": "Download documents attached to a smalt project — quotes, grid-registration forms, installer photos and schematics — so Claude can read them. Reads a refresh token from ~/.config/smalt/platform.token",
+  "version": "0.3.0",
+  "description": "Download documents attached to a smalt project \u2014 quotes, grid-registration forms, installer photos and schematics \u2014 so Claude can read them. Reads a refresh token from ~/.config/smalt/platform.token",
   "author": {
     "name": "smalt"
   },
-  "keywords": ["smalt", "documents", "projects", "grid-registration"]
+  "keywords": [
+    "smalt",
+    "documents",
+    "projects",
+    "grid-registration"
+  ]
 }

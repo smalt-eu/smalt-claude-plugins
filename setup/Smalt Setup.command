@@ -16,6 +16,8 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.homebrew/bin:$HOME/bin:$PAT
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")" || exit 1
 
 SELF=${BASH_SOURCE[0]##*/}
+# Ships with the plugin that uses it, not with this launcher.
+LOGIN_SCRIPT=../smalt-documents/scripts/platform-login.py
 TITLE="Smalt Workstation Setup"
 EU_SERVER="https://vault.bitwarden.eu"
 ESC=$(printf '\033')
@@ -34,17 +36,44 @@ quit()    { printf 'Cancelled.\n'; exit 0; }
 
 dialogs_available || hard "Run the setup from Terminal instead:\n    cd $(pwd)\n    export BW_SESSION=\"\$(bw unlock --raw)\"\n    ./install-credentials.sh"
 
-command -v bw >/dev/null 2>&1 || bail \
-"The Bitwarden command-line tool is not installed on this Mac.\n\nAsk whoever set up your account to run:\n    brew install bitwarden-cli\n\nThen double-click this file again."
-[ -f ./install-credentials.sh ] || bail \
-"install-credentials.sh is missing.\n\nIt should sit next to this launcher, in:\n$(pwd)"
+# ------------------------------------------------------------- which stages --
+# The two credentials are independent and must stay that way: the Metabase key
+# comes out of Bitwarden, the smalt platform token out of a login. Someone who
+# only wants the `smalt-documents` plugin should never need `bw`, so a missing
+# Bitwarden CLI skips that stage instead of ending the run.
+BW_STAGE=1; bwskip=""
+if ! command -v bw >/dev/null 2>&1; then
+  BW_STAGE=0
+  bwskip="Metabase key: skipped — the Bitwarden command-line tool is not installed on this Mac.\n\nOnly the metabase plugin needs it. To add it later:\n    brew install bitwarden-cli\nthen double-click $SELF again."
+elif [ ! -f ./install-credentials.sh ]; then
+  BW_STAGE=0
+  bwskip="Metabase key: skipped — install-credentials.sh is missing from\n$(pwd)"
+fi
 
-MODE=$(choose \
-"This sets up the credential files the smalt plugins need.\n\nYou will be asked for your Bitwarden master password once.\n\nCheck only — reports what would happen, changes nothing.\nSet up now — writes the files." \
+if [ "$BW_STAGE" -eq 1 ]; then
+  WHICH=$(choose \
+"This sets up the credential files the smalt plugins need.\n\nEverything — the Metabase key from your Bitwarden vault (asks for your master password once), and a smalt platform login.\n\nSmalt login only — just the login for reading project documents. No Bitwarden password needed." \
+"Everything" "Smalt login only")
+  [ -n "$WHICH" ] || quit
+  if [ "$WHICH" = "Smalt login only" ]; then
+    BW_STAGE=0
+    bwskip="Metabase key: not requested this time.\n\nDouble-click $SELF again and choose Everything if you want it."
+  fi
+fi
+
+if [ "$BW_STAGE" -eq 1 ]; then
+  MODE=$(choose \
+"Check only — reports what would happen, changes nothing.\nSet up now — writes the files.\n\nYou will be asked for your Bitwarden master password once." \
 "Check only" "Set up now")
+else
+  MODE=$(choose \
+"Setting up the smalt platform login only.\n\nCheck only — reports whether a login is already installed, changes nothing.\nSet up now — asks for your smalt email and password." \
+"Check only" "Set up now")
+fi
 [ -n "$MODE" ] || quit
 DRY=""; [ "$MODE" = "Check only" ] && DRY="--dry-run"
 
+if [ "$BW_STAGE" -eq 1 ]; then    # ── Bitwarden half ──
 raw=$(bw status 2>/dev/null)
 status=$(printf '%s' "$raw" | sed -n 's/.*"status":[[:space:]]*"\([a-z]*\)".*/\1/p')
 server=$(printf '%s' "$raw" | sed -n 's/.*"serverUrl":[[:space:]]*"\([^"]*\)".*/\1/p')
@@ -138,19 +167,22 @@ else
 fi
 
 cleanup     # Bitwarden is done with; lock the vault before anything else
+else
+  bwmsg="$bwskip"; bwok=1   # skipped on purpose, not a failure
+fi
 
 # ----------------------------------------------------------- platform login --
 # The smalt API refresh token. Deliberately NOT installed from Bitwarden: it
 # rotates on every use, so a vault copy is dead after the first refresh and the
 # conflict path above would offer to overwrite a live token with a dead one.
 platmsg=""; platok=0
-if [ ! -f ./platform-login.py ]; then
-  platmsg="Smalt platform login: skipped — platform-login.py is not in this folder."
+if [ ! -f "$LOGIN_SCRIPT" ]; then
+  platmsg="Smalt platform login: skipped — cannot find\n$LOGIN_SCRIPT\n\nIt ships with the smalt-documents plugin; run this launcher from a full checkout of smalt-claude-plugins."
 elif ! command -v python3 >/dev/null 2>&1; then
   platmsg="Smalt platform login: skipped — python3 not found."
 else
   printf '\n\nSmalt platform login\n'
-  chk=$(python3 ./platform-login.py --check 2>&1); crc=$?
+  chk=$(python3 "$LOGIN_SCRIPT" --check 2>&1); crc=$?
   printf '  %s\n' "$chk"
 
   if [ -n "$DRY" ]; then
@@ -178,7 +210,7 @@ else
         PLOG="$WORK/platform.log"
         # Password goes into the environment of this one process and nowhere
         # else — never argv, so it cannot be read out of `ps`.
-        SMALT_PASSWORD="$pw" python3 ./platform-login.py --email "$email" 2>&1 | tee "$PLOG"
+        SMALT_PASSWORD="$pw" python3 "$LOGIN_SCRIPT" --email "$email" 2>&1 | tee "$PLOG"
         prc=${PIPESTATUS[0]}
         unset pw
         pout=$(cat "$PLOG")
@@ -199,5 +231,10 @@ if [ -n "$DRY" ]; then
 elif [ "$bwok" -ne 1 ] || [ "$platok" -ne 1 ]; then
   stop "Setup finished, but not everything worked.\n\n$bwmsg\n\n$platmsg\n\nThe window behind this dialog has the detail."
 else
-  say "Setup complete. Your Bitwarden vault has been locked again.\n\n$bwmsg\n\n$platmsg"
+  # Only claim the vault was locked if we actually unlocked one.
+  if [ "$BW_STAGE" -eq 1 ]; then
+    say "Setup complete. Your Bitwarden vault has been locked again.\n\n$bwmsg\n\n$platmsg"
+  else
+    say "Setup complete.\n\n$bwmsg\n\n$platmsg"
+  fi
 fi

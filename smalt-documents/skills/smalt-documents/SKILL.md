@@ -149,6 +149,55 @@ re-interpreting.
 | `over the … MB limit` | Genuinely too big; suggest the platform UI. |
 | `network error … egress allowlist` | Connectivity or Cowork egress, not a credential problem. |
 
+## When nobody has logged in yet
+
+`fetch_document` fails with `no smalt credential found` until the person has a
+refresh token at `~/.config/smalt/platform.token`. You can walk them through
+it — the login helper ships inside this plugin, next to the server:
+
+```
+<plugin>/scripts/platform-login.py
+```
+
+The error message prints that path in full, resolved for this machine. Use the
+path from the message rather than constructing one.
+
+**Diagnose first.** This is safe to run yourself — no network, no secrets, it
+only reports whether a token file exists:
+
+```bash
+python3 '<the path from the error>/../scripts/platform-login.py' --check
+```
+
+Exit `0` means a token is installed (it prints the path, size, mode and age);
+exit `4` means there is none.
+
+**Then hand over the login. Do not run it for them.**
+
+```bash
+python3 '<path>/scripts/platform-login.py' --email their@smalt.eu
+```
+
+It prompts for the password itself, hidden, and the person types it. Tell them
+to run it in their own terminal — in Claude Code they can prefix it with `!`.
+Then they must **fully quit and relaunch** the app, because MCP servers are
+only started at launch.
+
+Rules, and they are not negotiable:
+
+- **Never ask for their password**, and never accept one if offered. If it
+  appears in the conversation, say it should be considered exposed and
+  changed.
+- **Never put a password in a command** — not as an argument, not as
+  `SMALT_PASSWORD=…` that you compose. That variable exists for the
+  double-click launcher, which has no terminal to prompt on. You have one.
+- Anyone with a checkout of `smalt-claude-plugins` can instead double-click
+  `setup/Smalt Setup.command` and choose **Smalt login only** — no Bitwarden
+  password needed for that half.
+
+The script prints only status, a path and a byte count, so its output is safe
+to read back. It never prints the token.
+
 ## Cached files
 
 Downloads land in `~/.cache/smalt/documents/<project_id>/`, mode 600. This

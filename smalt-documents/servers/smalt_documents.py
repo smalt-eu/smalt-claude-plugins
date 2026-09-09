@@ -19,8 +19,8 @@ Only the credential is configurable per-user, in order of precedence:
   2. ~/.config/smalt/platform.token (override the path with
      SMALT_TOKEN_FILE) — your *refresh* token on its own line. The whole
      file content is treated as the token (whitespace stripped). Normally
-     written by `setup/platform-login.py`, which honours the same
-     override. This is the recommended path on Cowork desktop, where
+     written by `scripts/platform-login.py`, which ships beside this
+     server and honours the same override. This is the recommended path on Cowork desktop, where
      userConfig / env-block substitution is currently broken (see
      Anthropic issues #39125 / #39455 / #39827). The file should be
      chmod 600.
@@ -48,7 +48,7 @@ import urllib.request
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "smalt-documents"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.0"
 HTTP_TIMEOUT_SECONDS = 120
 
 # Named for the API it authenticates to, not for this plugin — the same
@@ -71,6 +71,18 @@ DEFAULT_PURGE_DAYS = 7
 # 30 days, so one exchange per process start is plenty; a 401 forces a
 # re-exchange. Deliberately no expiry arithmetic — the 401 is the signal.
 _ACCESS_TOKEN: str | None = None
+
+
+def _login_script() -> str:
+    """Absolute path to the login helper that ships beside this server.
+
+    Resolved from __file__ so the message names a path that exists on this
+    machine — a Cowork user has the plugin but not a checkout of the repo, so
+    telling them to run something "from the setup folder" is useless.
+    """
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts", "platform-login.py")
 
 
 def _credentials_file() -> str:
@@ -137,9 +149,15 @@ def _read_refresh_token() -> str:
         return token
     diag_line = f"\nCredentials file diagnostic: {diag}" if diag else ""
     raise PlatformError(
-        f"no smalt credential found. Run 'Smalt Setup.command' from the "
-        f"setup folder of smalt-claude-plugins to log in, then fully "
-        f"relaunch this app. (Expected a refresh token at {_credentials_file()}.)"
+        f"no smalt credential found — nobody has logged in on this machine yet.\n"
+        f"Ask the user to run this in a terminal, and to type their own "
+        f"password at the prompt:\n"
+        f"    python3 '{_login_script()}' --email THEIR@smalt.eu\n"
+        f"Then this app must be fully quit and relaunched. Do not ask them for "
+        f"the password or run the login on their behalf.\n"
+        f"(Expected a refresh token at {_credentials_file()}. Anyone with a "
+        f"checkout of smalt-claude-plugins can double-click "
+        f"'setup/Smalt Setup.command' instead.)"
         f"{diag_line}"
     )
 

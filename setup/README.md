@@ -74,7 +74,7 @@ that is the point of them.
 * `platform.token` is a **refresh token that rotates on every use**, so it is
   deliberately *not* installed from Bitwarden — a stored copy would be stale
   after the first refresh. That is why the launcher asks you to log in.
-* `install-credentials.sh`, `platform-login.py` and `_dialogs.sh` do the actual
+* `install-credentials.sh`, `../smalt-documents/scripts/platform-login.py` and `_dialogs.sh` do the actual
   work; the `.command` file only asks the questions. Fix behaviour in the
   scripts, wording in the launcher.
 * Run `./install-credentials.sh --list` to see exactly what this checkout will

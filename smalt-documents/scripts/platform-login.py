@@ -12,12 +12,19 @@ WHAT IT DELIBERATELY DOES NOT DO
     * Print, log or store the password. It arrives in the environment (never
       argv, so it cannot be read out of `ps`) and is dropped immediately.
     * Keep the access token. The plugin mints its own and holds it in memory.
-    * Print the refresh token. Output is status, a path and a byte count — so
-      Claude can run this and read the result without learning a secret.
+    * Print the refresh token. Output is status, a path and a byte count, so
+      the result is safe to read back in a chat.
+
+    Claude may run `--check` freely: no network, no secrets. Claude must NOT
+    run the login for someone — that would mean handling their password. It
+    should hand over the command and let the person type it.
 
 USAGE
+    python3 platform-login.py --email you@smalt.eu    # prompts for the password
+    python3 platform-login.py --check                 # token installed? no network
+
     SMALT_PASSWORD='…' python3 platform-login.py --email you@smalt.eu
-    python3 platform-login.py --check          # is a token installed? no network
+                       # non-interactive; used by 'Smalt Setup.command'
 
     SMALT_API_BASE     override the API root (testing)
     SMALT_TOKEN_FILE   override the destination (testing)
@@ -28,6 +35,7 @@ EXIT CODES
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import sys
@@ -151,10 +159,18 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
+    # The launcher passes SMALT_PASSWORD (it has no terminal to prompt on).
+    # A person running this by hand gets a hidden prompt instead, so the
+    # password stays out of shell history and out of the environment. This is
+    # also what keeps the flow safe when Claude walks someone through it:
+    # Claude issues the command, the human types the secret.
     password = os.environ.get("SMALT_PASSWORD", "")
+    if not password and sys.stdin.isatty():
+        password = getpass.getpass("smalt password for %s: " % args.email)
     if not password:
-        print("SMALT_PASSWORD is not set. Pass the password in the environment, "
-              "never on the command line.", file=sys.stderr)
+        print("No password given. Either run this in a terminal, where it will "
+              "prompt, or pass SMALT_PASSWORD in the environment — never on the "
+              "command line.", file=sys.stderr)
         return 2
 
     status, body = post_json("/api/v1/auth/login",

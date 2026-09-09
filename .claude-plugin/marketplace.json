@@ -22,14 +22,14 @@
       ]
     },
     {
-      "name": "platform",
-      "source": "./platform",
-      "description": "Download smalt project documents (quotes, grid-registration forms, installer photos and schematics) so Claude can read them.",
-      "version": "0.1.0",
+      "name": "smalt-documents",
+      "source": "./smalt-documents",
+      "description": "Download documents attached to a smalt project \u2014 quotes, grid-registration forms, installer photos and schematics \u2014 so Claude can read them.",
+      "version": "0.2.0",
       "keywords": [
         "smalt",
-        "platform",
         "documents",
+        "projects",
         "grid-registration"
       ]
     }

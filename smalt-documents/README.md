@@ -1,14 +1,13 @@
-# platform plugin
+# smalt-documents plugin
 
 Lets Claude (Cowork or Claude Code) **read the documents attached to a
 smalt project** — quotes, grid-registration forms, installer photos and
-schematics — instead of working from what a portal page happens to show.
-Ships:
+schematics. Ships:
 
-- An **MCP server** (`servers/platform.py`) exposing a single
+- An **MCP server** (`servers/smalt_documents.py`) exposing a single
   `fetch_document` tool: it downloads one document to a local file and
   returns the path, so Claude's `Read` can render the image or PDF.
-- A **skill** (`skills/platform/SKILL.md`) that teaches Claude when to use
+- A **skill** (`skills/smalt-documents/SKILL.md`) that teaches Claude when to use
   it, how to find documents in the first place, and the rules for handling
   their contents.
 
@@ -55,14 +54,13 @@ The access token is held in memory for the life of the server process and
 never touches disk.
 
 **The token is per person.** Not shared, not committed, not a shared
-Bitwarden item. Note that the platform keeps no server-side record of which
-documents were downloaded, so a shared token would be untraceable — one
-more reason not to share one.
+Bitwarden item. A shared one cannot be revoked for a single person without
+cutting off everyone else holding it.
 
 ## Requirements
 
 - Python 3.8+ (default on macOS — `python3 --version` to confirm)
-- A smalt platform login, with the `SUPER_ADMIN` role
+- A smalt platform login (your normal smalt account)
 - Network access from your machine to `https://api2.smalt.eu`
 - The `metabase` plugin, for finding the documents to fetch
 
@@ -77,35 +75,18 @@ refreshed — and worse, the installer would offer to overwrite your live
 token with the dead one. The workstation launcher asks for your Smalt email
 and password once instead, and exchanges them for a token.
 
-To do it by hand — one call, which returns the refresh token directly:
+**Double-click `Smalt Setup.command`** in this repo's `setup/` folder. It
+asks for your smalt email and password once, exchanges them for a refresh
+token, and writes it to `~/.config/smalt/platform.token` at mode 600. The
+password is never stored.
 
-Save this as `get-token.py` somewhere temporary:
-
-```python
-import getpass, json, urllib.request
-
-email = input("smalt email: ")
-password = getpass.getpass("smalt password: ")
-req = urllib.request.Request(
-    "https://api2.smalt.eu/api/v1/auth/login",
-    data=json.dumps({"email": email, "password": password}).encode(),
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-print(json.load(urllib.request.urlopen(req))["refresh_token"])
-```
-
-then:
+To do the same from a terminal:
 
 ```bash
-mkdir -p ~/.config/smalt
-python3 get-token.py > ~/.config/smalt/platform.token
-chmod 600 ~/.config/smalt/platform.token
-rm get-token.py
+cd setup
+SMALT_PASSWORD='…' python3 platform-login.py --email you@smalt.eu
+python3 platform-login.py --check      # is a token installed? (no network)
 ```
-
-The password is never stored — it is exchanged once for the token and
-discarded.
 
 Or, if you already have a token from elsewhere, paste it on its own line:
 
@@ -119,21 +100,22 @@ The whole file is treated as the token — no `KEY=value` syntax, no
 comments, no quotes.
 
 Verify it before involving Claude at all. The `--check` and `--purge`
-commands below are run against `servers/platform.py` — from a clone of this
+commands below are run against `servers/smalt_documents.py` — from a clone of this
 repo before installing, or from the installed plugin's directory
 afterwards:
 
 ```bash
-python3 servers/platform.py --check
+python3 servers/smalt_documents.py --check
 ```
 
 ```
 OK    token valid at https://api2.smalt.eu
-      user    arne@smalt.eu
+      user    you@smalt.eu
       partner smalt
-      roles   SUPER_ADMIN
+      roles   …
       expires 2026-10-09T14:22:31+00:00
-      cache   /Users/arne/.cache/smalt/documents
+      token   /Users/you/.config/smalt/platform.token
+      cache   /Users/you/.cache/smalt/documents
 ```
 
 `--check` performs a real token exchange, so it also rotates and re-saves
@@ -142,7 +124,7 @@ your token. It never prints the token itself.
 ### 2. Install the plugin
 
 **Cowork (recommended path).** Open Cowork → click the plugin browser /
-marketplaces icon → find the smalt marketplace → install `platform`. After
+marketplaces icon → find the smalt marketplace → install `smalt-documents`. After
 installing, fully quit Cowork (`Cmd+Q`) and relaunch so the MCP server is
 spawned with the new install.
 
@@ -150,19 +132,19 @@ spawned with the new install.
 
 ```bash
 claude plugin marketplace add smalt-eu/smalt-claude-plugins
-claude plugin install platform@smalt-eu/smalt-claude-plugins
+claude plugin install smalt-documents@smalt-eu/smalt-claude-plugins
 ```
 
 ### 3. Sanity-check
 
 Open a fresh Cowork conversation and ask Claude:
 
-> Use the platform and metabase skills: list the documents on project 7842,
+> Use the smalt-documents and metabase skills: list the documents on project 7842,
 > then show me the quote.
 
 You should get a document list from SQL, then Claude fetching the `offer`
-PDF and reading the equipment out of it. If you see `missing
-SMALT_API_TOKEN`, the sidecar file isn't being found at
+PDF and reading the equipment out of it. If you see `no smalt
+credential found`, the sidecar file isn't being found at
 `~/.config/smalt/platform.token` — check the path and permissions. If you
 see `network error`, the file is read but the request can't reach the API —
 typically a VPN, or Cowork's network egress allowlist.
@@ -175,8 +157,8 @@ numbers and photos of people's homes, and **nothing deletes them
 automatically**.
 
 ```bash
-python3 servers/platform.py --purge            # delete older than 7 days
-python3 servers/platform.py --purge --days 0   # delete everything
+python3 servers/smalt_documents.py --purge            # delete older than 7 days
+python3 servers/smalt_documents.py --purge --days 0   # delete everything
 ```
 
 Worth putting on a weekly cron if you use this regularly.
@@ -186,6 +168,7 @@ Worth putting on a weekly cron if you use this regularly.
 | Variable | Effect |
 |---|---|
 | `SMALT_API_TOKEN` | Use this refresh token instead of the file. When set, the server will **not** write a rotated token back — you are managing the credential yourself. |
+| `SMALT_TOKEN_FILE` | Read/write the refresh token at this path instead of `~/.config/smalt/platform.token`. `setup/platform-login.py` honours the same variable. |
 | `SMALT_API_BASE_URL` | Point at staging or a local dev server instead of `https://api2.smalt.eu`. |
 
 ## What it talks to

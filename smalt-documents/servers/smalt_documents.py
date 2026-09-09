@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal stdio MCP server for the smalt platform API.
+"""Minimal stdio MCP server for smalt project documents.
 
 Implements the Model Context Protocol (JSON-RPC 2.0 over stdio) using
 nothing but the Python standard library. Exposes a single `fetch_document`
@@ -16,9 +16,11 @@ Only the credential is configurable per-user, in order of precedence:
 
   1. Process environment variable SMALT_API_TOKEN (works when the MCP
      host propagates env, e.g. Claude Code CLI).
-  2. ~/.config/smalt/platform.token — paste your *refresh* token on its
-     own line. The whole file content is treated as the token (whitespace
-     stripped). This is the recommended path on Cowork desktop, where
+  2. ~/.config/smalt/platform.token (override the path with
+     SMALT_TOKEN_FILE) — your *refresh* token on its own line. The whole
+     file content is treated as the token (whitespace stripped). Normally
+     written by `setup/platform-login.py`, which honours the same
+     override. This is the recommended path on Cowork desktop, where
      userConfig / env-block substitution is currently broken (see
      Anthropic issues #39125 / #39455 / #39827). The file should be
      chmod 600.
@@ -31,9 +33,9 @@ UPDATE. The access token is held in memory only and never written to disk.
 
 Setup check, without starting the server:
 
-    python3 platform.py --check      verify the credential and print whoami
-    python3 platform.py --purge      delete cached documents older than 7 days
-    python3 platform.py --purge --days 0    delete all cached documents
+    python3 smalt_documents.py --check      verify the credential and print whoami
+    python3 smalt_documents.py --purge      delete cached documents older than 7 days
+    python3 smalt_documents.py --purge --days 0    delete all cached documents
 """
 from __future__ import annotations
 import json
@@ -45,11 +47,15 @@ import urllib.error
 import urllib.request
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_NAME = "platform"
-SERVER_VERSION = "0.1.0"
+SERVER_NAME = "smalt-documents"
+SERVER_VERSION = "0.2.0"
 HTTP_TIMEOUT_SECONDS = 120
 
-CREDENTIALS_FILE = os.path.expanduser("~/.config/smalt/platform.token")
+# Named for the API it authenticates to, not for this plugin — the same
+# credential would serve any smalt-platform tool, exactly as `metabase.key`
+# is named for Metabase. `setup/platform-login.py` writes this file and
+# honours the same SMALT_TOKEN_FILE override, so the two stay in step.
+DEFAULT_CREDENTIALS_FILE = "~/.config/smalt/platform.token"
 DEFAULT_BASE_URL = "https://api2.smalt.eu"
 CACHE_DIR = os.path.expanduser("~/.cache/smalt/documents")
 
@@ -67,13 +73,19 @@ DEFAULT_PURGE_DAYS = 7
 _ACCESS_TOKEN: str | None = None
 
 
+def _credentials_file() -> str:
+    """Where the refresh token lives. Resolved per call so the env override
+    works even when it is set after import."""
+    return os.path.expanduser(os.environ.get("SMALT_TOKEN_FILE", DEFAULT_CREDENTIALS_FILE))
+
+
 def _base_url() -> str:
     return os.environ.get("SMALT_API_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
 
 
 def _log(msg: str) -> None:
     """Write to stderr; stdout is reserved for JSON-RPC."""
-    sys.stderr.write(f"[platform-mcp] {msg}\n")
+    sys.stderr.write(f"[smalt-documents-mcp] {msg}\n")
     sys.stderr.flush()
 
 
@@ -120,14 +132,14 @@ def _read_refresh_token() -> str:
     token = os.environ.get("SMALT_API_TOKEN", "").strip()
     if token:
         return token
-    token, diag = _read_token_file(CREDENTIALS_FILE)
+    token, diag = _read_token_file(_credentials_file())
     if token:
         return token
     diag_line = f"\nCredentials file diagnostic: {diag}" if diag else ""
     raise PlatformError(
-        f"missing SMALT_API_TOKEN. Paste your smalt refresh token on its own "
-        f"line into {CREDENTIALS_FILE}, chmod 600 the file, and fully relaunch "
-        f"your Claude client. See the plugin README for how to obtain one."
+        f"no smalt credential found. Run 'Smalt Setup.command' from the "
+        f"setup folder of smalt-claude-plugins to log in, then fully "
+        f"relaunch this app. (Expected a refresh token at {_credentials_file()}.)"
         f"{diag_line}"
     )
 
@@ -147,10 +159,11 @@ def _store_refresh_token(token: str) -> None:
     if os.environ.get("SMALT_API_TOKEN", "").strip():
         return
 
-    directory = os.path.dirname(CREDENTIALS_FILE)
+    dest = _credentials_file()
+    directory = os.path.dirname(dest)
     try:
         os.makedirs(directory, mode=0o700, exist_ok=True)
-        tmp_path = f"{CREDENTIALS_FILE}.tmp.{os.getpid()}"
+        tmp_path = f"{dest}.tmp.{os.getpid()}"
         fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -160,8 +173,8 @@ def _store_refresh_token(token: str) -> None:
         except BaseException:
             os.unlink(tmp_path)
             raise
-        os.replace(tmp_path, CREDENTIALS_FILE)
-        os.chmod(CREDENTIALS_FILE, 0o600)
+        os.replace(tmp_path, dest)
+        os.chmod(dest, 0o600)
     except OSError as e:
         # A rotated-but-unsaved token still works for this process; the
         # stored one also stays valid, so this is a warning not a failure.
@@ -238,7 +251,7 @@ def _exchange_refresh_token() -> dict:
         raise PlatformError(
             f"your smalt access has been revoked or the token has expired "
             f"({_detail(payload)}). Log in to the partner dashboard again and "
-            f"replace the token in {CREDENTIALS_FILE}. Do not retry."
+            f"replace the token in {_credentials_file()}. Do not retry."
         )
     if status >= 400:
         raise PlatformError(f"token exchange failed (HTTP {status}): {_detail(payload)}")
@@ -354,12 +367,13 @@ def _int_arg(value, name: str, hint: str) -> int:
 def fetch_document(document_id, project_id) -> str:
     """Download one document and return its local path plus metadata.
 
-    `project_id` is required and checked against the document. The token
-    already reaches every partner's documents, so this is not a security
-    boundary — it is there because `documents.id` is a sequential integer,
-    which makes the table walkable by counting. Stating the project turns a
-    wrong, guessed or injected id into a loud error instead of a silent
-    cross-tenant read.
+    `project_id` is required and checked against the document. It is not a
+    security boundary — the account's own permissions are that — but stating
+    the project turns a wrong, guessed or injected id into a loud error rather
+    than a silent read of something unrelated.
+
+    Do not make it optional. It also keeps documents that have no project of
+    their own out of reach, and that class is the most sensitive in the table.
     """
     doc_id = _int_arg(
         document_id,
@@ -573,6 +587,7 @@ def _cli_check() -> int:
     print(f"      partner {partner or '-'}")
     print(f"      roles   {', '.join(r for r in roles if r) or '-'}")
     print(f"      expires {blob.get('expires_at') or '-'}")
+    print(f"      token   {_credentials_file()}")
     print(f"      cache   {CACHE_DIR}")
     return 0
 

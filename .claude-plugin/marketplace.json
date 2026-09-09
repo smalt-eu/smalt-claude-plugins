@@ -25,7 +25,7 @@
       "name": "smalt-documents",
       "source": "./smalt-documents",
       "description": "Download documents attached to a smalt project \u2014 quotes, grid-registration forms, installer photos and schematics \u2014 so Claude can read them.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "keywords": [
         "smalt",
         "documents",

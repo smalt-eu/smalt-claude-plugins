@@ -1,6 +1,6 @@
 {
   "name": "smalt-documents",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Download documents attached to a smalt project \u2014 quotes, grid-registration forms, installer photos and schematics \u2014 so Claude can read them. Reads a refresh token from ~/.config/smalt/platform.token",
   "author": {
     "name": "smalt"

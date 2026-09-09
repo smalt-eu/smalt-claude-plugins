@@ -4,9 +4,10 @@ Lets Claude (Cowork or Claude Code) **read the documents attached to a
 smalt project** — quotes, grid-registration forms, installer photos and
 schematics. Ships:
 
-- An **MCP server** (`servers/smalt_documents.py`) exposing a single
-  `fetch_document` tool: it downloads one document to a local file and
-  returns the path, so Claude's `Read` can render the image or PDF.
+- An **MCP server** (`servers/smalt_documents.py`) exposing two tools:
+  `fetch_document`, which downloads one document to a local file and returns
+  the path so Claude's `Read` can render the image or PDF; and `login`, which
+  opens a native sign-in dialog on your Mac when no credential is installed.
 - A **skill** (`skills/smalt-documents/SKILL.md`) that teaches Claude when to use
   it, how to find documents in the first place, the rules for handling
   their contents, and how to walk someone through logging in.
@@ -79,7 +80,17 @@ refreshed — and worse, the installer would offer to overwrite your live
 token with the dead one. The workstation launcher asks for your Smalt email
 and password once instead, and exchanges them for a token.
 
-**From a terminal — works whatever you installed, and needs nothing else:**
+**The easy way: ask Claude.** Say "I need to log in to smalt" in a fresh
+conversation. It calls the `login` tool, a normal macOS dialog opens asking
+for your email and then your password, and that is the whole procedure — no
+Terminal, no file paths, and no quitting the app afterwards. The dialog runs
+on your machine, so Claude never sees the password; it only learns whether
+sign-in worked, and as whom.
+
+That works even from a cloud session, because the plugin's server always runs
+locally.
+
+**Or from a terminal, if you prefer or are not on macOS:**
 
 ```bash
 python3 scripts/platform-login.py --email you@smalt.eu   # prompts, hidden
@@ -134,6 +145,10 @@ OK    token valid at https://api2.smalt.eu
 `--check` performs a real token exchange, so it also rotates and re-saves
 your token. It never prints the token itself.
 
+Note that `scripts/platform-login.py --check` (the *other* `--check`) only
+inspects the local filesystem, so it is meaningless from a cloud session — it
+would look at the container's home directory, not yours.
+
 ### 2. Install the plugin
 
 **Cowork (recommended path).** Open Cowork → click the plugin browser /
@@ -175,6 +190,18 @@ python3 servers/smalt_documents.py --purge --days 0   # delete everything
 ```
 
 Worth putting on a weekly cron if you use this regularly.
+
+Fetching the same document twice does not re-download it: the cached copy is
+served when its size matches the database, and the result says
+`"cached": true`. A document's bytes never change under a given id — a
+replacement upload creates a new row — so a complete cached copy is always
+the right file. The authorisation call still happens every time.
+
+The server always runs on your own Mac, so downloads always land in *your*
+home directory. A cloud or container session can call `fetch_document`
+fine — the MCP server is local — but its `Read` looks at the container, so
+the returned path will seem not to exist until it is granted access to
+`~/.cache/smalt/documents` and the file is staged across.
 
 ## Environment overrides
 

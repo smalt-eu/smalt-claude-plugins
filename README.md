@@ -9,6 +9,7 @@ Code from one centrally-managed source.
 | Plugin | What it does |
 |--------|--------------|
 | [`metabase`](./metabase) | Query and manage smalt's Metabase via its REST API. Reads credentials from `~/.config/smalt/metabase.key`. |
+| [`platform`](./platform) | Download a smalt project's documents — quotes, grid-registration forms, installer photos and schematics — so Claude can read them. Reads a refresh token from `~/.config/smalt/platform.token`. Use together with `metabase`, which finds the documents. |
 
 ## Install a plugin (smalt employees)
 

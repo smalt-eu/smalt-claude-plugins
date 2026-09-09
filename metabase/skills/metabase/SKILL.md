@@ -7,10 +7,17 @@ description: Query and manage the smalt Metabase instance (https://metabase.smal
 
 Manage the smalt Metabase instance via the REST API.
 
-This skill exposes one MCP tool — `mcp__metabase__query` — that proxies HTTP
-requests to Metabase. Treat it as a thin wrapper around `curl`: pick the
-HTTP method, the endpoint path (relative to `/api`), and an optional JSON
-body. The full response body is returned as a string.
+This skill uses the Metabase MCP `query` tool — a thin wrapper around
+`curl`: pick the HTTP method, the endpoint path (relative to `/api`), and an
+optional JSON body. The full response body is returned as a string.
+
+Which tool name you call depends on the client:
+
+- **Cowork / Claude Code** (stdio plugin server): `mcp__metabase__query`
+- **OpenWork** (org connection `Metabase`, served by the `metabase-mcp`
+  Cloud Run bridge): the `query` tool exposed through the Den connection —
+  e.g. `mcp:<connection-id>:query` from the agent, `Metabase: query` in the
+  desktop tool list.
 
 ## ⚠️ Safety Rules
 
@@ -25,16 +32,25 @@ body. The full response body is returned as a string.
 
 ## Setup
 
-The MCP server reads the API key from `~/.config/smalt/metabase.key` —
-just paste the key on its own line. It always talks to
-`https://metabase.smalt.eu`. See the plugin README for one-off setup.
-The `METABASE_API_KEY` process env var also works and takes precedence
-over the file.
+**OpenWork:** nothing to set up. The org-level `Metabase` MCP connection
+(Den dashboard → Extensions) already carries the credential — the `metabase-mcp`
+bridge injects it per call (shared org key or per-member key, depending on
+how the admin configured the connection). VPN is not required; calls run
+cloud-side. If a call answers *"missing Metabase API key on this MCP
+connection"*, the org admin needs to add the key on the connection in the
+Den dashboard.
 
-Quick auth sanity check:
+**Cowork / Claude Code:** the stdio MCP server reads the API key from
+`~/.config/smalt/metabase.key` — just paste the key on its own line. It
+always talks to `https://metabase.smalt.eu`. See the plugin README for
+one-off setup. The `METABASE_API_KEY` process env var also works and takes
+precedence over the file. Your machine must be able to reach the instance
+(VPN if applicable).
+
+Quick auth sanity check (tool name per client, see above):
 
 ```
-mcp__metabase__query(method="GET", endpoint="/user/current")
+query(method="GET", endpoint="/user/current")
 ```
 
 The API key is bound to a single Metabase user; group permissions of that
@@ -45,7 +61,7 @@ admin) require superuser scope.
 ## Calling the tool
 
 ```
-mcp__metabase__query(method, endpoint, body?)
+query(method, endpoint, body?)
 ```
 
 - `method`: `GET` | `POST` | `PUT` | `DELETE` | `PATCH`
@@ -56,28 +72,28 @@ Examples:
 
 ```
 # Whoami / sanity check
-mcp__metabase__query(method="GET", endpoint="/user/current")
+query(method="GET", endpoint="/user/current")
 
 # List collections
-mcp__metabase__query(method="GET", endpoint="/collection")
+query(method="GET", endpoint="/collection")
 
 # Items inside a collection
-mcp__metabase__query(method="GET", endpoint="/collection/12/items")
+query(method="GET", endpoint="/collection/12/items")
 
 # Get a single card (question)
-mcp__metabase__query(method="GET", endpoint="/card/153")
+query(method="GET", endpoint="/card/153")
 
 # Get a dashboard with all dashcards & parameters
-mcp__metabase__query(method="GET", endpoint="/dashboard/12")
+query(method="GET", endpoint="/dashboard/12")
 
 # Create a card
-mcp__metabase__query(method="POST", endpoint="/card", body={...})
+query(method="POST", endpoint="/card", body={...})
 
 # Patch a card name
-mcp__metabase__query(method="PUT", endpoint="/card/153", body={"name": "renamed"})
+query(method="PUT", endpoint="/card/153", body={"name": "renamed"})
 
 # Archive a card (preferred over DELETE)
-mcp__metabase__query(method="PUT", endpoint="/card/153", body={"archived": true})
+query(method="PUT", endpoint="/card/153", body={"archived": true})
 ```
 
 The response is the raw Metabase response body as a string — usually JSON,
@@ -109,7 +125,7 @@ Two equally-good paths for understanding table shapes:
 
 ```
 # (A) Raw SQL on information_schema (any connected DB)
-mcp__metabase__query(method="POST", endpoint="/dataset", body={
+query(method="POST", endpoint="/dataset", body={
   "database": 2,
   "type": "native",
   "native": {
@@ -118,8 +134,8 @@ mcp__metabase__query(method="POST", endpoint="/dataset", body={
 })
 
 # (B) Metabase's catalog (richer: FKs, semantic types, display names)
-mcp__metabase__query(method="GET", endpoint="/database/2/metadata")
-mcp__metabase__query(method="GET", endpoint="/table/:table_id/query_metadata")
+query(method="GET", endpoint="/database/2/metadata")
+query(method="GET", endpoint="/table/:table_id/query_metadata")
 ```
 
 (B) is more compact when you want a single field's metadata or want to follow FKs;
@@ -133,14 +149,14 @@ and cross-checks against chart values.
 
 ```
 # Smalt-Prod (database 2)
-mcp__metabase__query(method="POST", endpoint="/dataset", body={
+query(method="POST", endpoint="/dataset", body={
   "database": 2,
   "type": "native",
   "native": {"query": "SELECT count(*) FROM projects WHERE deleted_at IS NULL"}
 })
 
 # Attio Data (database 5)
-mcp__metabase__query(method="POST", endpoint="/dataset", body={
+query(method="POST", endpoint="/dataset", body={
   "database": 5,
   "type": "native",
   "native": {"query": "SELECT count(*) FROM invoices WHERE date_invoiced >= '2026-04-01'"}
